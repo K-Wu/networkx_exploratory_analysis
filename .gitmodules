@@ -1,0 +1,3 @@
+[submodule "thirdparty/bear"]
+	path = thirdparty/bear
+	url = https://github.com/K-Wu/bear

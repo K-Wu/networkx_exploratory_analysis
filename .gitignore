@@ -1,0 +1,3 @@
+*.gpickle
+dataset/
+.idea/
