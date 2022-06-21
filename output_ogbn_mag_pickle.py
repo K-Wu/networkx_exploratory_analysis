@@ -4,7 +4,7 @@ dataset = NodePropPredDataset(name='ogbn-mag')
 
 import networkx as nx
 
-G = nx.MultiGraph()
+G = nx.MultiDiGraph()
 G.add_nodes_from(range(dataset.graph['num_nodes_dict']['author']), type="author")
 G.add_nodes_from([(item[0], {'venue': item[1]}) for item in zip(range(dataset.graph['num_nodes_dict']['author'],
                                                                       dataset.graph['num_nodes_dict']['author'] +
@@ -34,6 +34,6 @@ G.add_edges_from([(item[0] + dataset.graph['num_nodes_dict']['author'],
                    dataset.graph['num_nodes_dict']['institution']) for item in
                   zip(*dataset.graph['edge_index_dict'][('paper', 'has_topic', 'field_of_study')].tolist())],
                  type='paper_has_topic_field_of_study')
-nx.write_gpickle(G, "ogbn-mag.gpickle")
-G = nx.read_gpickle("ogbn-mag.gpickle")
+nx.write_gpickle(G, "ogbn-mag.multidigraph.gpickle")
+G = nx.read_gpickle("ogbn-mag.multidigraph.gpickle")
 pass

@@ -6,13 +6,13 @@ dataset = LinkPropPredDataset(name='ogbl-wikikg2')
 print(dataset)
 import networkx as nx
 
-G = nx.MultiGraph()
+G = nx.MultiDiGraph()
 
 G.add_nodes_from(range(dataset.graph['num_nodes']))
 for edge_idx in range(len(dataset.graph['edge_index'][0])):
     G.add_edge(dataset.graph['edge_index'][0][edge_idx], dataset.graph['edge_index'][1][edge_idx],
                type=dataset.graph['edge_reltype'][edge_idx][0])
 
-nx.write_gpickle(G, "ogbn-wikikg2.gpickle")
-G = nx.read_gpickle("ogbn-wikikg2.gpickle")
+nx.write_gpickle(G, "ogbn-wikikg2.multidigraph.gpickle")
+G = nx.read_gpickle("ogbn-wikikg2.multidigraph.gpickle")
 pass
