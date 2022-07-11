@@ -1,3 +1,4 @@
 *.gpickle
 dataset/
 .idea/
+*.npy

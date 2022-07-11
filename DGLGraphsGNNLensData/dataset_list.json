@@ -1,0 +1,1 @@
+{"datasets": [{"id": 1, "name": "Cora"}, {"id": 2, "name": "Citeseer"}, {"id": 3, "name": "CoauthorCS"}, {"id": 4, "name": "CoauthorPhysics"}, {"id": 5, "name": "FB15K237"}], "success": true}
