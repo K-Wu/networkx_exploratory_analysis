@@ -34,6 +34,34 @@ G.add_edges_from([(item[0] + dataset.graph['num_nodes_dict']['author'],
                    dataset.graph['num_nodes_dict']['institution']) for item in
                   zip(*dataset.graph['edge_index_dict'][('paper', 'has_topic', 'field_of_study')].tolist())],
                  type='paper_has_topic_field_of_study')
-nx.write_gpickle(G, "ogbn-mag.multidigraph.gpickle")
-G = nx.read_gpickle("ogbn-mag.multidigraph.gpickle")
+# nx.write_gpickle(G, "ogbn-mag.multidigraph.gpickle")
+# G = nx.read_gpickle("ogbn-mag.multidigraph.gpickle")
+
+# NB: ported from dgl-nvtx repo
+
+G.edges.data()
+
+import numpy
+
+# with open("writing_coo_1.npy",'wb') as fd:
+numpy.save("writing_coo_1.npy",
+           numpy.array([srcs_or_dsts.tolist() for srcs_or_dsts in G.edges(type='writing')], dtype=numpy.int32))
+# with open("cited_coo_1.npy",'wb') as fd:
+# numpy.save("cited_coo_1.npy",numpy.array([srcs_or_dsts.tolist() for srcs_or_dsts in G.edges(etype='cited')],dtype=numpy.int32))
+# with open("citing_coo_1.npy",'wb') as fd:
+numpy.save("citing_coo_1.npy",
+           numpy.array([srcs_or_dsts.tolist() for srcs_or_dsts in G.edges(type='citing')], dtype=numpy.int32))
+# with open("is-about_coo_1.npy",'wb') as fd:
+numpy.save("is-about_coo_1.npy",
+           numpy.array([srcs_or_dsts.tolist() for srcs_or_dsts in G.edges(type='has_topic')], dtype=numpy.int32))
+# with open("written-by_coo_1.npy",'wb') as fd:
+# numpy.save("written-by_coo_1.npy",numpy.array([srcs_or_dsts.tolist() for srcs_or_dsts in G.edges(etype='written-by')],dtype=numpy.int32))
+# with open("has_coo_1.npy",'wb') as fd:
+# numpy.save("has_coo_1.npy",numpy.array([srcs_or_dsts.tolist() for srcs_or_dsts in G.edges(etype='has')],dtype=numpy.int32))
+# affiliated_with
+numpy.save("affliated_with_1.npy",
+           numpy.array([srcs_or_dsts.tolist() for srcs_or_dsts in G.edges(type='affliated_with')], dtype=numpy.int32))
+# artificial reverse edge
+# numpy.save("affliating_1.npy",numpy.array([srcs_or_dsts.tolist() for srcs_or_dsts in G.edges(etype='affliating')],dtype=numpy.int32))
+exit()
 pass

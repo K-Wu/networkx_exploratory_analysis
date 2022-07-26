@@ -45,6 +45,8 @@ def output_npy_file_fb15k237():
 
 
 def load_ogbn_mag():
+    # NB: we need to reindex nodes as nodes of any type in this data set originally starts with index 0
+    # the ordering of the abosolute node indices from 0 to N-1 is author, paper, institution, field_of_study
     from ogb.nodeproppred import NodePropPredDataset
     dataset = NodePropPredDataset(name='ogbn-mag')
     graph = dataset[0]
@@ -52,20 +54,35 @@ def load_ogbn_mag():
     # edges_dsts = graph.edges()[0].detach().numpy()
     # edges_etypes = graph.edata['etype'].detach().numpy()
     edge_srcs = graph[0]['edge_index_dict'][('author', 'affiliated_with', 'institution')][0]
-    edge_dsts = graph[0]['edge_index_dict'][('author', 'affiliated_with', 'institution')][1]
+    edge_dsts = graph[0]['edge_index_dict'][('author', 'affiliated_with', 'institution')][1] + \
+                graph[0]['num_nodes_dict']['author'] + graph[0]['num_nodes_dict']['paper']
     edge_types = [0] * len(edge_srcs)
 
     edge_srcs2 = graph[0]['edge_index_dict'][('author', 'writes', 'paper')][0]
-    edge_dsts2 = graph[0]['edge_index_dict'][('author', 'writes', 'paper')][1]
+    edge_dsts2 = graph[0]['edge_index_dict'][('author', 'writes', 'paper')][1] + graph[0]['num_nodes_dict']['author']
     edge_types2 = [1] * len(edge_srcs2)
 
-    edge_srcs3 = graph[0]['edge_index_dict'][('paper', 'cites', 'paper')][0]
-    edge_dsts3 = graph[0]['edge_index_dict'][('paper', 'cites', 'paper')][1]
+    edge_srcs3 = graph[0]['edge_index_dict'][('paper', 'cites', 'paper')][0] + graph[0]['num_nodes_dict']['author']
+    edge_dsts3 = graph[0]['edge_index_dict'][('paper', 'cites', 'paper')][1] + graph[0]['num_nodes_dict']['author']
     edge_types3 = [2] * len(edge_srcs3)
 
-    edge_srcs4 = graph[0]['edge_index_dict'][('paper', 'has_topic', 'field_of_study')][0]
-    edge_dsts4 = graph[0]['edge_index_dict'][('paper', 'has_topic', 'field_of_study')][1]
+    edge_srcs4 = graph[0]['edge_index_dict'][('paper', 'has_topic', 'field_of_study')][0] + graph[0]['num_nodes_dict'][
+        'author']
+    edge_dsts4 = graph[0]['edge_index_dict'][('paper', 'has_topic', 'field_of_study')][1] + graph[0]['num_nodes_dict'][
+        'author'] + graph[0]['num_nodes_dict']['paper'] + graph[0]['num_nodes_dict']['institution']
     edge_types4 = [3] * len(edge_srcs4)
+
+    import numpy
+    # NB: the same as the ogbn-mag outputting script in dgl-nvtx
+    numpy.save("affliated_with_1.npy", numpy.concatenate([[edge_srcs], [edge_dsts]], dtype=numpy.int32))
+    numpy.save("writing_coo_1.npy", numpy.concatenate([[edge_srcs2], [edge_dsts2]], dtype=numpy.int32))
+    numpy.save("citing_coo_1.npy", numpy.concatenate([[edge_srcs3], [edge_dsts3]], dtype=numpy.int32))
+    numpy.save("is-about_coo_1.npy", numpy.concatenate([[edge_srcs4], [edge_dsts4]], dtype=numpy.int32))
+    # there should be no bubble in the node indexing
+    num_nodes = graph[0]['num_nodes_dict']['author'] + graph[0]['num_nodes_dict']['paper'] + graph[0]['num_nodes_dict'][
+        'institution'] + graph[0]['num_nodes_dict']['field_of_study']
+    assert (max(max(edge_srcs), max(edge_srcs2), max(edge_srcs3), max(edge_srcs4), max(edge_dsts), max(edge_dsts2),
+                max(edge_dsts3), max(edge_dsts4)) == num_nodes - 1)
 
     return np.concatenate([edge_srcs, edge_srcs2, edge_srcs3, edge_srcs4]), \
            np.concatenate([edge_dsts, edge_dsts2, edge_dsts3, edge_dsts4]), \
@@ -91,7 +108,7 @@ def plot_edge_type_vs_src_idx_hist(srcs, dsts, etypes):
         for edge in edges_per_src_idx_dict[src_idx]:
             dst_idx, edge_type = edge
             edge_type_count_dict[edge_type] = edge_type_count_dict.get(edge_type, 0) + 1
-        # get edge type index and count of maximal edge type
+        # get (occurrence, edge type index) of the maximal edge type for current source node
         maximal_edge_type_per_src_idx_dict[src_idx] = max(
             [(edge_type_count_dict[edge_type], edge_type) for edge_type in edge_type_count_dict], key=lambda x: x[0])
 
@@ -105,7 +122,7 @@ def plot_edge_type_vs_src_idx_hist(srcs, dsts, etypes):
     for src_idx in maximal_edge_type_per_src_idx_dict:
         maximal_edge_type_and_occurrences[
             maximal_edge_type_per_src_idx_dict[src_idx][1]] = maximal_edge_type_and_occurrences.get(
-            maximal_edge_type_per_src_idx_dict[src_idx][0], 0) + 1
+            maximal_edge_type_per_src_idx_dict[src_idx][1], 0) + 1
     pyplot.plot(list(range(max(maximal_edge_type_and_occurrences.keys()) + 1)),
                 [maximal_edge_type_and_occurrences.get(edge_type, 0) for edge_type in
                  range(max(maximal_edge_type_and_occurrences.keys()) + 1)])
@@ -146,6 +163,7 @@ def output_segment_csr_format(edges_srcs, edges_dsts, edges_types, cutoff_node_a
             edges_per_src_idx_dict[src_idx] = set()
         edges_per_src_idx_dict[src_idx].add((dst_idx, etype))
 
+
     maximal_edge_type_per_src_idx_dict = {}
     for src_idx in edges_per_src_idx_dict:
         edge_type_count_dict = {}
@@ -160,6 +178,16 @@ def output_segment_csr_format(edges_srcs, edges_dsts, edges_types, cutoff_node_a
     reversed_sorted_maximal_edge_type_per_src_idx = reversed(
         sorted([maximal_edge_type_per_src_idx_dict[key] for key in maximal_edge_type_per_src_idx_dict.keys()],
                key=lambda x: x[0]))
+
+    # there are also nodes without being present as source node, we need to add them to the end of the reversed sort list
+    num_nodes = max([max(edges_srcs), max(edges_dsts)]) + 1
+    zero_source_nodes_maximal_edge_type = [(0, 0, src_idx) for src_idx in
+                                           set(range(num_nodes)).difference(maximal_edge_type_per_src_idx_dict.keys())]
+    reversed_sorted_maximal_edge_type_per_src_idx = list(
+        reversed_sorted_maximal_edge_type_per_src_idx) + zero_source_nodes_maximal_edge_type
+
+    assert (len(reversed_sorted_maximal_edge_type_per_src_idx) == num_nodes)
+
     # first, permute the indices to let the minimal to the very end
     node_indices_mapping = dict(
         [(element[2], new_idx) for new_idx, element in enumerate(reversed_sorted_maximal_edge_type_per_src_idx)])
@@ -181,7 +209,8 @@ def output_segment_csr_format(edges_srcs, edges_dsts, edges_types, cutoff_node_a
                                               range(len(new_maximal_edge_type_per_src_idx_dict))]
     part_0_edge_nums = [element[0] for element in new_maximal_edge_type_per_src_idx_list[:-cutoff_node_amount]]
     part_0_edge_types = [element[1] for element in new_maximal_edge_type_per_src_idx_list[:-cutoff_node_amount]]
-    np.save(dataset_name + '.segment_csr.part_0.edge_nums.npy', np.array(part_0_edge_nums, dtype=np.int64))
+    np.save(dataset_name + '.segment_csr.part_0.edge_nums.npy', np.array(part_0_edge_nums,
+                                                                         dtype=np.int64))  # This array will be exclusive scanned and then padded eventually in C++
     np.save(dataset_name + '.segment_csr.part_0.edge_types.npy', np.array(part_0_edge_types, dtype=np.int64))
     print("maximal non-cut-off index ", len(new_maximal_edge_type_per_src_idx_list[:-cutoff_node_amount]))
 
@@ -218,7 +247,8 @@ def output_segment_csr_format(edges_srcs, edges_dsts, edges_types, cutoff_node_a
                 # residue edges: non-maximal-edge-type edges for non-cut-off nodes
                 part_3_residue_edges.append((src_idx, dst_idx, edge_type))
         assert (len(part_2_edges[src_idx]) == curr_edge_num)
-    np.save(dataset_name + '.segment_csr.part_2.edges.npy', np.array(part_2_edges_flatten, dtype=np.int64))
+    np.save(dataset_name + '.segment_csr.part_2.edges.npy', np.array(part_2_edges_flatten,
+                                                                     dtype=np.int64))  # this will be padded eventually in C++. another padded array in C++ is eids associated with this array
     # residue edges: all edges for those cut-off nodes
     for src_idx in range(len(part_0_edge_types), len(new_edges_per_src_idx_dict.keys())):
         for dst_idx, edge_type in new_edges_per_src_idx_dict[src_idx]:
@@ -232,7 +262,7 @@ def output_segment_csr_format(edges_srcs, edges_dsts, edges_types, cutoff_node_a
 
 if __name__ == "__main__":
     # edges_srcs, edges_dsts, edges_types = output_npy_file_fb15k237()
-    # edges_srcs, edges_dsts, edges_types = output_npy_file_ogbn_wikikg2()
-    edges_srcs, edges_dsts, edges_types = load_ogbn_mag()  # mere csr for 400000 nodes, others use maximal_segment csr
+    edges_srcs, edges_dsts, edges_types = output_npy_file_ogbn_wikikg2()
+    # edges_srcs, edges_dsts, edges_types = load_ogbn_mag()  # mere csr for 400000 nodes, others use maximal_segment csr
 
     plot_edge_type_vs_src_idx_hist(edges_srcs, edges_dsts, edges_types)
