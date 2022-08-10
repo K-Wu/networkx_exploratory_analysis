@@ -260,9 +260,48 @@ def output_segment_csr_format(edges_srcs, edges_dsts, edges_types, cutoff_node_a
     np.save(dataset_name + '.segment_csr.part_3.types.npy', np.array(part_3_types, dtype=np.int64))
 
 
-if __name__ == "__main__":
+def load_segment_csr_dataset(dataset_name):
+    part_0_edge_nums = np.load(dataset_name + '.segment_csr.part_0.edge_nums.npy')
+    part_0_edge_types = np.load(dataset_name + '.segment_csr.part_0.edge_types.npy')
+    part_1_edge_type_num = np.load(dataset_name + '.segment_csr.part_1.edge_type_num.npy')
+    part_1_src_node_per_edge_type = np.load(dataset_name + '.segment_csr.part_1.src_node_per_edge_type.npy')
+    part_2_edges = np.load(dataset_name + '.segment_csr.part_2.edges.npy')
+    part_3_srcs = np.load(dataset_name + '.segment_csr.part_3.srcs.npy')
+    part_3_dsts = np.load(dataset_name + '.segment_csr.part_3.dsts.npy')
+    part_3_types = np.load(dataset_name + '.segment_csr.part_3.types.npy')
+    return part_0_edge_nums, part_0_edge_types, part_1_edge_type_num, part_1_src_node_per_edge_type, part_2_edges, part_3_srcs, part_3_dsts, part_3_types
+
+
+def count_overlap(part_0_edge_nums, part_1_edge_type_num, part_1_src_node_per_edge_type, part_2_edges):
+    exclusive_scan_part_0_edge_nums = [0] + np.cumsum(part_0_edge_nums).tolist()
+    exclusive_scan_part_1_edge_type_num = [0] + np.cumsum(part_1_edge_type_num).tolist()
+    average_reuses = []
+    for idx_relation in range(len(part_1_edge_type_num)):
+        for idx_threading_block in range((part_1_edge_type_num[idx_relation] + 31) // 32):
+            idx_src_nodes = list(
+                map(lambda x: part_1_src_node_per_edge_type[exclusive_scan_part_1_edge_type_num[idx_relation] + x],
+                    range(idx_threading_block * 32,
+                          min((idx_threading_block + 1) * 32, part_1_edge_type_num[idx_relation]))))
+            dest_nodes_for_all_source_nodes = list(map(lambda x: set(
+                part_2_edges[exclusive_scan_part_0_edge_nums[x]:exclusive_scan_part_0_edge_nums[x + 1]]),
+                                                       idx_src_nodes))
+            average_reuse = (sum([len(dest_nodes_for_one_src_node) for dest_nodes_for_one_src_node in
+                                  dest_nodes_for_all_source_nodes]) + 0.0) / (
+                                        0.000001 + len(set().union(*dest_nodes_for_all_source_nodes)))
+            average_reuses.append(average_reuse)
+
+    print('average_reuses:', sum(average_reuses) / len(average_reuses))
+
+
+def main2():
     # edges_srcs, edges_dsts, edges_types = output_npy_file_fb15k237()
     edges_srcs, edges_dsts, edges_types = output_npy_file_ogbn_wikikg2()
     # edges_srcs, edges_dsts, edges_types = load_ogbn_mag()  # mere csr for 400000 nodes, others use maximal_segment csr
 
     plot_edge_type_vs_src_idx_hist(edges_srcs, edges_dsts, edges_types)
+
+
+if __name__ == "__main__":
+    part_0_edge_nums, part_0_edge_types, part_1_edge_type_num, part_1_src_node_per_edge_type, part_2_edges, part_3_srcs, part_3_dsts, part_3_types = load_segment_csr_dataset(
+        'ogbn_mag')
+    count_overlap(part_0_edge_nums, part_1_edge_type_num, part_1_src_node_per_edge_type, part_2_edges)

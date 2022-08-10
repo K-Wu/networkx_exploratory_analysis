@@ -38,9 +38,36 @@ def rabbit_reorder(edges_srcs, edges_dsts, edges_types):
         edges_dsts[i] = node_remap[edges_dsts[i]]
     return edges_srcs, edges_dsts, edges_types
 
+def count_num_edges_in_tiles(edges_srcs, edges_dests, edges_types, tile_dim=32, threshold=0.1):
+    num_minimum_nodes_in_tiles = tile_dim * tile_dim * threshold
+
+    potential_tiles = dict()
+
+    for edge_idx in range(len(edges_srcs)):
+        src = edges_srcs[edge_idx]
+        dst = edges_dests[edge_idx]
+        etype = edges_types[edge_idx]
+        if src // tile_dim not in potential_tiles:
+            potential_tiles[src // tile_dim] = dict()
+
+        src_tile_dict = potential_tiles[src // tile_dim]
+        if dst // tile_dim not in src_tile_dict:
+            src_tile_dict[dst // tile_dim] = set()
+
+        src_dest_tile_set = src_tile_dict[dst // tile_dim]
+        src_dest_tile_set.add((src, dst, etype))
+
+    num_edges_in_tiles = 0
+    for src_tile in potential_tiles.keys():
+        for dst_tile in potential_tiles[src_tile].keys():
+            if len(potential_tiles[src_tile][dst_tile]) >= num_minimum_nodes_in_tiles:
+                num_edges_in_tiles += len(potential_tiles[src_tile][dst_tile])
+
+    print("num_edges_in_tiles portion: ", (0.0 + num_edges_in_tiles) / len(edges_srcs))
+    return
 
 if __name__ == "__main__":
     edges_srcs, edges_dsts, edges_types = load_ogbn_mag()
     edges_srcs, edges_dsts, edges_types = rabbit_reorder(edges_srcs, edges_dsts, edges_types)
-
+    count_num_edges_in_tiles(edges_srcs, edges_dsts, edges_types)
     output_segment_csr_format(edges_srcs, edges_dsts, edges_types, 400000, "ogbn_mag")
