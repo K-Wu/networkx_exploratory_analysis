@@ -18,13 +18,16 @@ from matplotlib import pyplot
 #         assert (len(dataset.graph['edge_reltype'][edge_idx]) == 1)
 #     np.save("ogbn-wikikg2.coo.srcs.npy", edges_srcs)
 #     np.save("ogbn-wikikg2.coo.dsts.npy", edges_dsts)
-#     np.save("ogbn-wikikg2.coo.etypes.npy", edges_types)
+#     np.save("ogbn-wikikg2.coo.etypes.npy", edges_types)f
 #     return edges_srcs, edges_dsts, edges_types
 
 def output_npy_file_ogbn_wikikg2(sorted=False, sorted_by_src=False, transposed=False):
+
     from ogb.linkproppred import LinkPropPredDataset
     dataset = LinkPropPredDataset(name='ogbl-wikikg2')
     graph = dataset[0]
+    # graph is a built-in dictionary
+    # no node types provided. Assuming only one node type
     edges_srcs = graph['edge_index'][0]
     edges_dsts = graph['edge_index'][1]
     edges_etypes = graph['edge_reltype'].flatten()
@@ -37,7 +40,8 @@ def output_npy_file_ogbn_wikikg2(sorted=False, sorted_by_src=False, transposed=F
             edges_srcs, edges_dsts, edges_etypes, edge_referential_eids = sort_coo_by_src_outgoing_edges(edges_srcs,
                                                                                                          edges_dsts,
                                                                                                          edges_etypes,
-                                                                                                         edge_referential_eids)
+                                                                                                         edge_referential_eids,
+                                                                                                         graph['num_nodes'])
             np.save(transposed_prefix + "ogbn-wikikg2.coo.sorted.by_srcs_outgoing_freq.srcs.npy", edges_srcs)
             np.save(transposed_prefix + "ogbn-wikikg2.coo.sorted.by_srcs_outgoing_freq.dsts.npy", edges_dsts)
             np.save(transposed_prefix + "ogbn-wikikg2.coo.sorted.by_srcs_outgoing_freq.etypes.npy", edges_etypes)
@@ -61,15 +65,26 @@ def output_npy_file_ogbn_wikikg2(sorted=False, sorted_by_src=False, transposed=F
         np.save(transposed_prefix + "wikikg2.coo.referential_eids.npy", edge_referential_eids)
     return edges_srcs, edges_dsts, edges_etypes
 
-
+def get_src_dest_pair_for_each_etype(edges_srcs, edges_dsts, edges_etypes):
+    src_dest_pairs_for_each_etype = {}
+    for edge_idx in range(len(edges_srcs)):
+        src = edges_srcs[edge_idx]
+        dst = edges_dsts[edge_idx]
+        etype = edges_etypes[edge_idx]
+        if etype not in src_dest_pairs_for_each_etype:
+            src_dest_pairs_for_each_etype[etype] = set()
+        src_dest_pairs_for_each_etype[etype].add((src, dst))
+    return src_dest_pairs_for_each_etype
 def output_npy_file_fb15k237(sorted=False, sorted_by_src=False, transposed=False):
+
     from dgl.data import FB15k237Dataset
     dataset = FB15k237Dataset()
     graph = dataset[0]
+    # only one node type
     # num_nodes: 14541, num_edges:620232
     edges_srcs, edges_dsts = graph.edges()
-    edges_srcs = graph.edges()[0].detach().numpy()
-    edges_dsts = graph.edges()[0].detach().numpy()
+    edges_srcs= edges_srcs.numpy()
+    edges_dsts= edges_dsts.numpy()
     edges_etypes = graph.edata['etype'].detach().numpy()
     edge_referential_eids = np.arange(len(edges_srcs), dtype=np.int64)
     transposed_prefix = 'transposed.' if transposed else ''
@@ -81,7 +96,8 @@ def output_npy_file_fb15k237(sorted=False, sorted_by_src=False, transposed=False
             edges_srcs, edges_dsts, edges_etypes, edge_referential_eids = sort_coo_by_src_outgoing_edges(edges_srcs,
                                                                                                          edges_dsts,
                                                                                                          edges_etypes,
-                                                                                                         edge_referential_eids)
+                                                                                                         edge_referential_eids,
+                                                                                                         graph.num_nodes())
             np.save(transposed_prefix + "fb15k237.coo.sorted.by_srcs_outgoing_freq.srcs.npy", edges_srcs)
             np.save(transposed_prefix + "fb15k237.coo.sorted.by_srcs_outgoing_freq.dsts.npy", edges_dsts)
             np.save(transposed_prefix + "fb15k237.coo.sorted.by_srcs_outgoing_freq.etypes.npy", edges_etypes)
@@ -183,15 +199,22 @@ def sort_coo_by_etype(srcs, dsts, etypes, eids):
     sorted_eids = np.array([x[3] for x in sorted_src_dst_etype])
     return sorted_srcs, sorted_dsts, sorted_etypes, sorted_eids
 
-
-def remap_src_according_to_number_of_edges(srcs):
+def get_node_index_remap_dict_according_to_number_of_edges(srcs, number_of_nodes):
+    #TODO: involve non-source node here also.
+    #TODO: try to preserve the original place of nodes with near-to-none out degree in the remapping
     srcs_frequency = np.bincount(srcs.flatten())
+    if srcs_frequency.shape[0] < number_of_nodes:
+        srcs_frequency = np.concatenate([srcs_frequency, np.zeros(number_of_nodes - srcs_frequency.shape[0])])
     # TODO: check if there is data loss in this np.argsort invocation, i.e., implicit conversion from int64 to int32
     srcs_sorted_by_frequency_from_largest_to_smallest = np.argsort(srcs_frequency)[::-1]
     original_src_to_new_src_map = dict(zip(srcs_sorted_by_frequency_from_largest_to_smallest.tolist(),
                                            range(len(srcs_sorted_by_frequency_from_largest_to_smallest))))
+    return original_src_to_new_src_map
+def remap_node_index_according_to_number_of_edges(srcs, dests, number_of_nodes):
+    original_src_to_new_src_map = get_node_index_remap_dict_according_to_number_of_edges(srcs, number_of_nodes)
     remapped_src = np.array([original_src_to_new_src_map[src] for src in srcs], dtype=srcs.dtype)
-    return remapped_src
+    remapped_dest = np.array([original_src_to_new_src_map[dest] for dest in dests], dtype=dests.dtype)
+    return remapped_src, remapped_dest
 
 
 # def sort_coo_by_src_outgoing_edges(srcs, dsts, etypes):
@@ -203,8 +226,8 @@ def remap_src_according_to_number_of_edges(srcs):
 #     sorted_etypes = np.array([x[2] for x in sorted_src_dst_srcs])
 #     return sorted_srcs, sorted_dsts, sorted_etypes
 
-def sort_coo_by_src_outgoing_edges(srcs, dsts, etypes, eids):
-    srcs = remap_src_according_to_number_of_edges(srcs)
+def sort_coo_by_src_outgoing_edges(srcs, dsts, etypes, eids, number_of_nodes):
+    srcs, dsts = remap_node_index_according_to_number_of_edges(srcs, dsts, number_of_nodes)
     # now sort the (src, dst) pair according to their src idx
     sorted_src_dst_srcs = sorted(zip(srcs, dsts, etypes, eids), key=lambda x: x[0])
     sorted_srcs = np.array([x[0] for x in sorted_src_dst_srcs])
@@ -428,18 +451,30 @@ def main2():
 
 
 def main3():
+    # edge_srcs, edge_dests, edge_etypes = output_npy_file_fb15k237(sorted=False, sorted_by_src=False, transposed=False)
+    # get_src_dest_pair_for_each_etype(edge_srcs, edge_dests, edge_etypes)
     output_npy_file_fb15k237(sorted=True, sorted_by_src=True, transposed=True)
     output_npy_file_fb15k237(sorted=True, sorted_by_src=False, transposed=True)
     output_npy_file_fb15k237(sorted=True, sorted_by_src=True, transposed=False)
     output_npy_file_fb15k237(sorted=True, sorted_by_src=False, transposed=False)
+
+    output_npy_file_fb15k237(sorted=False, sorted_by_src=False, transposed=True)
+    output_npy_file_fb15k237(sorted=False, sorted_by_src=False, transposed=False)
+
     output_npy_file_ogbn_wikikg2(sorted=True, sorted_by_src=True, transposed=False)
     output_npy_file_ogbn_wikikg2(sorted=True, sorted_by_src=False, transposed=False)
     output_npy_file_ogbn_wikikg2(sorted=True, sorted_by_src=True, transposed=True)
     output_npy_file_ogbn_wikikg2(sorted=True, sorted_by_src=False, transposed=True)
 
+    output_npy_file_ogbn_wikikg2(sorted=False, sorted_by_src=False, transposed=True)
+    output_npy_file_ogbn_wikikg2(sorted=False, sorted_by_src=False, transposed=False)
+
+def main4():
+    output_npy_file_fb15k237(sorted=False, sorted_by_src=False, transposed=False)
+    output_npy_file_ogbn_wikikg2(sorted=False, sorted_by_src=False, transposed=False)
 
 if __name__ == "__main__":
     # part_0_edge_nums, part_0_edge_types, part_1_edge_type_num, part_1_src_node_per_edge_type, part_2_edges, part_3_srcs, part_3_dsts, part_3_types = load_segment_csr_dataset(
     #    'ogbn_mag')
     # count_overlap(part_0_edge_nums, part_1_edge_type_num, part_1_src_node_per_edge_type, part_2_edges)
-    main3()
+    main4()
