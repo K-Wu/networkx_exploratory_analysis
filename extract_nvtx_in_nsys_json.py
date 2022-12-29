@@ -4,6 +4,14 @@ import json
 import typing
 import pickle
 
+
+def pickle_dump_obj_to_file(obj, dump_file_name):
+    with open(dump_file_name, 'wb') as fd:
+        pickle.dump(obj, fd)
+def pickle_load_obj_from_file(dump_file_name):
+    with open(dump_file_name, 'rb') as fd:
+        return pickle.load(fd)
+
 class HectorNVTXEvent:
     def __init__(self, json_data: dict):
         self.json_data = json_data
@@ -56,6 +64,16 @@ class HectorNVTXEvent:
         yield self
         for child in self.children:
             yield from child.yield_events()
+
+    def get_seq_id(self):
+        # NB: there is one special case in DGL, i.e., GSpMMBackward may call GSpMM as its implementation but the seq id of the later is marked during forward propagation
+        # In this case, we need to ignore the seq id of the GSpMM
+        # In other cases, the seq id of the lower level should precede the higher level.
+        # If the seq id does not exist, then we need to recursively go to the parent level to find the seq id
+        # TODO: we need to add the parent as a class data member
+        raise NotImplementedError
+        return self.seq
+
 
     def _get_seq_category(self, category=""):
         result = dict()
@@ -158,9 +176,7 @@ class HectorNVTXEventTree:
         result_tree = HectorNVTXEventTree(self.global_tid)
         result_tree.children = result
         return result_tree
-    def save_to_file(self, dump_file_name):
-        with open(dump_file_name, 'wb') as fd:
-            pickle.dump(self,fd)
+
 
 class HectorNVTXEventsPerProcess:
     def __init__(self, nvtx_trees: typing.List[HectorNVTXEventTree]):
@@ -190,12 +206,17 @@ class HectorNVTXEventsPerProcess:
         for event in self.yield_events():
             if event.text.find("hector_benchmark_record") != -1:
                 self.benchmark_record_periods[event.text] = (event.start_timestamp, event.end_timestamp)
-    def propagate_seq_id(self):
+    def propagate_seq_id_category(self):
         # TODO:
         raise NotImplementedError
         pass
         # for nvtx_tree in self.nvtx_trees.values():
         #     self.seq_id_category.update(nvtx_tree.get_seq_category())
+
+    def get_cateogry_breakdown(self):
+        # TODO
+        raise NotImplementedError
+
     def extract_seq_id_category(self):
         for nvtx_tree in self.nvtx_trees.values():
             self.seq_id_category.update(nvtx_tree.get_seq_category())
